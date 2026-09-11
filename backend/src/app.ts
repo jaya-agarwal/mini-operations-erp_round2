@@ -13,6 +13,7 @@ import workOrderRoutes from "./modules/workorders/workorders.routes";
 import transferRoutes from "./modules/transfers/transfers.routes";
 import orderRoutes from "./modules/orders/orders.routes";
 import referenceDataRoutes from "./modules/locations/locations.routes";
+import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 
 export function createApp() {
   const app = express();
@@ -34,6 +35,7 @@ export function createApp() {
   app.use("/api/transfers", transferRoutes);
   app.use("/api/orders", orderRoutes);
   app.use("/api", referenceDataRoutes); // /api/locations, /api/categories, /api/items
+  app.use("/api", dashboardRoutes); // /api/dashboard/stats
 
   app.use(notFoundHandler);
   app.use(errorHandler);
