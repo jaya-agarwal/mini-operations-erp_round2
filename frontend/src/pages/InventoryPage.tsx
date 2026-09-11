@@ -1,6 +1,8 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Boxes, Plus, Search, TriangleAlert } from "lucide-react";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useToast } from "../lib/toast";
 
 interface Batch {
   id: string;
@@ -17,14 +19,19 @@ interface Ref {
   name: string;
 }
 
+const LOW_STOCK = 15;
+
 export default function InventoryPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canEdit = user?.role === "ADMIN" || user?.role === "OPERATIONS";
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [items, setItems] = useState<Ref[]>([]);
   const [locations, setLocations] = useState<Ref[]>([]);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ itemId: "", locationId: "", batchCode: "", physicalQuantity: "" });
   const [damageTarget, setDamageTarget] = useState<Batch | null>(null);
@@ -42,8 +49,22 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(apiErrorMessage(e)));
+    load()
+      .catch((e) => setError(apiErrorMessage(e)))
+      .finally(() => setLoading(false));
   }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return batches;
+    return batches.filter(
+      (b) =>
+        b.item.name.toLowerCase().includes(q) ||
+        b.item.sku.toLowerCase().includes(q) ||
+        b.location.name.toLowerCase().includes(q) ||
+        b.batchCode.toLowerCase().includes(q)
+    );
+  }, [batches, query]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -58,6 +79,7 @@ export default function InventoryPage() {
       setForm({ itemId: "", locationId: "", batchCode: "", physicalQuantity: "" });
       setShowForm(false);
       await load();
+      toast.push("Stock received into inventory");
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -72,6 +94,7 @@ export default function InventoryPage() {
       setDamageTarget(null);
       setDamageQty("");
       await load();
+      toast.push(`Marked ${damageQty} unit(s) of ${damageTarget.item.name} as damaged`, "info");
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -79,24 +102,38 @@ export default function InventoryPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Inventory</h1>
-          <p className="text-sm text-gray-500">Available = Physical − Reserved − Damaged</p>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Boxes size={19} className="text-amber-600" />
+            Inventory
+          </h1>
+          <p className="text-sm text-ink-muted">Available = Physical − Reserved − Damaged</p>
         </div>
         {canEdit && (
           <button className="btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Cancel" : "+ Receive Stock"}
+            <Plus size={15} />
+            {showForm ? "Cancel" : "Receive stock"}
           </button>
         )}
       </div>
 
-      {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+      <div className="relative mb-4 max-w-sm">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          className="input pl-9"
+          placeholder="Search item, SKU, location, batch…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {error && <div className="mb-4 text-sm text-danger-600 flag-row px-3 py-2 rounded">{error}</div>}
 
       {showForm && (
         <form onSubmit={handleCreate} className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div>
-            <label className="text-xs font-medium text-gray-600">Item</label>
+            <label className="text-xs font-medium text-ink-muted">Item</label>
             <select
               className="input mt-1"
               required
@@ -112,7 +149,7 @@ export default function InventoryPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Location</label>
+            <label className="text-xs font-medium text-ink-muted">Location</label>
             <select
               className="input mt-1"
               required
@@ -128,7 +165,7 @@ export default function InventoryPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Batch Code</label>
+            <label className="text-xs font-medium text-ink-muted">Batch code</label>
             <input
               className="input mt-1"
               required
@@ -137,7 +174,7 @@ export default function InventoryPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Quantity</label>
+            <label className="text-xs font-medium text-ink-muted">Quantity</label>
             <input
               className="input mt-1"
               type="number"
@@ -155,7 +192,7 @@ export default function InventoryPage() {
 
       <div className="card overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-paper border-b border-paper-border dark:bg-steel-800 dark:border-steel-700">
             <tr>
               <th className="table-th">Item</th>
               <th className="table-th">Location</th>
@@ -167,29 +204,49 @@ export default function InventoryPage() {
               {canEdit && <th className="table-th"></th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {batches.map((b) => (
-              <tr key={b.id}>
-                <td className="table-td font-medium">{b.item.name}</td>
-                <td className="table-td">{b.location.name}</td>
-                <td className="table-td text-gray-400">{b.batchCode}</td>
-                <td className="table-td">{b.physicalQuantity}</td>
-                <td className="table-td">{b.reservedQuantity}</td>
-                <td className="table-td">{b.damagedQuantity}</td>
-                <td className="table-td font-semibold text-brand-700">{b.availableQuantity}</td>
-                {canEdit && (
-                  <td className="table-td">
-                    <button className="btn-secondary text-xs" onClick={() => setDamageTarget(b)}>
-                      Mark Damaged
-                    </button>
+          <tbody className="divide-y divide-paper-border dark:divide-steel-700">
+            {loading &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={8} className="px-3 py-3">
+                    <div className="h-3.5 rounded bg-paper-border/60 dark:bg-steel-700 animate-pulse" />
                   </td>
-                )}
-              </tr>
-            ))}
-            {batches.length === 0 && (
+                </tr>
+              ))}
+            {!loading &&
+              filtered.map((b) => {
+                const low = b.availableQuantity <= LOW_STOCK;
+                return (
+                  <tr key={b.id} className={low ? "flag-row" : undefined}>
+                    <td className="table-td font-medium">
+                      {b.item.name}
+                      <span className="block text-xs text-ink-faint font-mono">{b.item.sku}</span>
+                    </td>
+                    <td className="table-td">{b.location.name}</td>
+                    <td className="table-td text-ink-faint font-mono">{b.batchCode}</td>
+                    <td className="table-td table-mono">{b.physicalQuantity}</td>
+                    <td className="table-td table-mono">{b.reservedQuantity}</td>
+                    <td className="table-td table-mono">{b.damagedQuantity}</td>
+                    <td className="table-td table-mono font-semibold">
+                      <span className={low ? "text-amber-700 flex items-center gap-1" : "text-ink"}>
+                        {low && <TriangleAlert size={13} />}
+                        {b.availableQuantity}
+                      </span>
+                    </td>
+                    {canEdit && (
+                      <td className="table-td">
+                        <button className="btn-secondary text-xs py-1" onClick={() => setDamageTarget(b)}>
+                          Mark damaged
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            {!loading && filtered.length === 0 && (
               <tr>
-                <td className="table-td text-gray-400" colSpan={8}>
-                  No inventory yet.
+                <td className="table-td text-ink-faint py-8 text-center" colSpan={8}>
+                  {batches.length === 0 ? "No inventory received yet." : "No batches match your search."}
                 </td>
               </tr>
             )}
@@ -198,10 +255,10 @@ export default function InventoryPage() {
       </div>
 
       {damageTarget && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <form onSubmit={handleMarkDamaged} className="card p-5 w-80 space-y-3">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50">
+          <form onSubmit={handleMarkDamaged} className="card p-5 w-80 space-y-3 shadow-pop">
             <h2 className="font-semibold">Mark stock damaged</h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               {damageTarget.item.name} · {damageTarget.location.name} · available: {damageTarget.availableQuantity}
             </p>
             <input

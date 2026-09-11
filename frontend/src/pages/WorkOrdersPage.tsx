@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Wrench, Plus } from "lucide-react";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useToast } from "../lib/toast";
 
 interface WorkOrder {
   id: string;
@@ -18,18 +20,20 @@ interface Ref {
 }
 
 const statusColor: Record<string, string> = {
-  ASSIGNED: "bg-gray-100 text-gray-700",
-  IN_PROGRESS: "bg-amber-100 text-amber-700",
-  COMPLETED: "bg-green-100 text-green-700",
+  ASSIGNED: "bg-steel-200 text-steel-700 dark:bg-steel-700 dark:text-steel-200",
+  IN_PROGRESS: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+  COMPLETED: "bg-ok-50 text-ok-600 dark:bg-ok-500/15 dark:text-ok-500",
 };
 
 export default function WorkOrdersPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [items, setItems] = useState<Ref[]>([]);
   const [locations, setLocations] = useState<Ref[]>([]);
   const [users, setUsers] = useState<Ref[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ itemId: "", locationId: "", requiredQuantity: "", assignedUserId: "" });
 
@@ -48,7 +52,9 @@ export default function WorkOrdersPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(apiErrorMessage(e)));
+    load()
+      .catch((e) => setError(apiErrorMessage(e)))
+      .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -65,6 +71,7 @@ export default function WorkOrdersPage() {
       setForm({ itemId: "", locationId: "", requiredQuantity: "", assignedUserId: "" });
       setShowForm(false);
       await load();
+      toast.push("Work order created");
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -75,6 +82,7 @@ export default function WorkOrdersPage() {
     try {
       await api.patch(`/work-orders/${id}/status`, { status });
       await load();
+      toast.push(`Work order moved to ${status.replace("_", " ").toLowerCase()}`);
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -84,22 +92,26 @@ export default function WorkOrdersPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-semibold">Work Orders</h1>
-          <p className="text-sm text-gray-500">Shortage is calculated automatically against live stock</p>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Wrench size={18} className="text-amber-600" />
+            Work Orders
+          </h1>
+          <p className="text-sm text-ink-muted">Shortage is calculated automatically against live stock</p>
         </div>
         {user?.role === "ADMIN" && (
           <button className="btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Cancel" : "+ New Work Order"}
+            <Plus size={15} />
+            {showForm ? "Cancel" : "New work order"}
           </button>
         )}
       </div>
 
-      {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 text-sm text-danger-600 flag-row px-3 py-2 rounded">{error}</div>}
 
       {showForm && (
         <form onSubmit={handleCreate} className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div>
-            <label className="text-xs font-medium text-gray-600">Item</label>
+            <label className="text-xs font-medium text-ink-muted">Item</label>
             <select
               className="input mt-1"
               required
@@ -115,7 +127,7 @@ export default function WorkOrdersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Location</label>
+            <label className="text-xs font-medium text-ink-muted">Location</label>
             <select
               className="input mt-1"
               required
@@ -131,7 +143,7 @@ export default function WorkOrdersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Required Qty</label>
+            <label className="text-xs font-medium text-ink-muted">Required qty</label>
             <input
               className="input mt-1"
               type="number"
@@ -142,7 +154,7 @@ export default function WorkOrdersPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Assigned User</label>
+            <label className="text-xs font-medium text-ink-muted">Assigned user</label>
             <select
               className="input mt-1"
               required
@@ -165,7 +177,7 @@ export default function WorkOrdersPage() {
 
       <div className="card overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-paper border-b border-paper-border dark:bg-steel-800 dark:border-steel-700">
             <tr>
               <th className="table-th">Item</th>
               <th className="table-th">Location</th>
@@ -177,42 +189,53 @@ export default function WorkOrdersPage() {
               <th className="table-th"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td className="table-td font-medium">{o.item.name}</td>
-                <td className="table-td">{o.location.name}</td>
-                <td className="table-td">{o.assignedUser.name}</td>
-                <td className="table-td">{o.requiredQuantity}</td>
-                <td className="table-td">{o.availableAtLocation}</td>
-                <td className="table-td">
-                  {o.shortage > 0 ? (
-                    <span className="badge bg-red-100 text-red-700">{o.shortage} short</span>
-                  ) : (
-                    <span className="badge bg-green-100 text-green-700">OK</span>
-                  )}
-                </td>
-                <td className="table-td">
-                  <span className={`badge ${statusColor[o.status]}`}>{o.status}</span>
-                </td>
-                <td className="table-td">
-                  {o.status !== "COMPLETED" && (
-                    <select
-                      className="input text-xs py-1"
-                      value=""
-                      onChange={(e) => e.target.value && updateStatus(o.id, e.target.value)}
-                    >
-                      <option value="">Move to...</option>
-                      {o.status === "ASSIGNED" && <option value="IN_PROGRESS">In Progress</option>}
-                      {o.status === "IN_PROGRESS" && <option value="COMPLETED">Completed</option>}
-                    </select>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {orders.length === 0 && (
+          <tbody className="divide-y divide-paper-border dark:divide-steel-700">
+            {loading &&
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={8} className="px-3 py-3">
+                    <div className="h-3.5 rounded bg-paper-border/60 dark:bg-steel-700 animate-pulse" />
+                  </td>
+                </tr>
+              ))}
+            {!loading &&
+              orders.map((o) => (
+                <tr key={o.id} className={o.shortage > 0 ? "flag-row" : undefined}>
+                  <td className="table-td font-medium">{o.item.name}</td>
+                  <td className="table-td">{o.location.name}</td>
+                  <td className="table-td">{o.assignedUser.name}</td>
+                  <td className="table-td table-mono">{o.requiredQuantity}</td>
+                  <td className="table-td table-mono">{o.availableAtLocation}</td>
+                  <td className="table-td">
+                    {o.shortage > 0 ? (
+                      <span className="badge bg-danger-50 text-danger-600 dark:bg-danger-500/15 table-mono">
+                        {o.shortage} short
+                      </span>
+                    ) : (
+                      <span className="badge bg-ok-50 text-ok-600 dark:bg-ok-500/15">OK</span>
+                    )}
+                  </td>
+                  <td className="table-td">
+                    <span className={`badge ${statusColor[o.status]}`}>{o.status.replace("_", " ")}</span>
+                  </td>
+                  <td className="table-td">
+                    {o.status !== "COMPLETED" && (
+                      <select
+                        className="input text-xs py-1"
+                        value=""
+                        onChange={(e) => e.target.value && updateStatus(o.id, e.target.value)}
+                      >
+                        <option value="">Move to…</option>
+                        {o.status === "ASSIGNED" && <option value="IN_PROGRESS">In Progress</option>}
+                        {o.status === "IN_PROGRESS" && <option value="COMPLETED">Completed</option>}
+                      </select>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            {!loading && orders.length === 0 && (
               <tr>
-                <td className="table-td text-gray-400" colSpan={8}>
+                <td className="table-td text-ink-faint py-8 text-center" colSpan={8}>
                   No work orders yet.
                 </td>
               </tr>

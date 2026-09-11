@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
+import { ArrowLeftRight, Plus } from "lucide-react";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useToast } from "../lib/toast";
 
 interface Transfer {
   id: string;
@@ -24,14 +26,15 @@ interface Ref {
 }
 
 const statusColor: Record<string, string> = {
-  REQUESTED: "bg-gray-100 text-gray-700",
-  DISPATCHED: "bg-amber-100 text-amber-700",
-  PARTIALLY_RECEIVED: "bg-blue-100 text-blue-700",
-  RECEIVED: "bg-green-100 text-green-700",
+  REQUESTED: "bg-steel-200 text-steel-700 dark:bg-steel-700 dark:text-steel-200",
+  DISPATCHED: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+  PARTIALLY_RECEIVED: "bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-200",
+  RECEIVED: "bg-ok-50 text-ok-600 dark:bg-ok-500/15 dark:text-ok-500",
 };
 
 export default function TransfersPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canAct = user?.role === "ADMIN" || user?.role === "OPERATIONS";
 
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -39,6 +42,7 @@ export default function TransfersPage() {
   const [items, setItems] = useState<Ref[]>([]);
   const [locations, setLocations] = useState<Ref[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     itemId: "",
@@ -64,7 +68,9 @@ export default function TransfersPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(apiErrorMessage(e)));
+    load()
+      .catch((e) => setError(apiErrorMessage(e)))
+      .finally(() => setLoading(false));
   }, []);
 
   const sourceBatchesForForm = batches.filter(
@@ -85,6 +91,7 @@ export default function TransfersPage() {
       setForm({ itemId: "", sourceLocationId: "", destinationLocationId: "", sourceBatchId: "", quantity: "" });
       setShowForm(false);
       await load();
+      toast.push("Transfer requested");
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -102,6 +109,7 @@ export default function TransfersPage() {
       if (!candidate) throw new Error("No source batch found for this transfer's item/location");
       await api.post(`/transfers/${t.id}/dispatch`, { sourceBatchId: candidate.id });
       await load();
+      toast.push(`${t.item.name} dispatched from ${t.sourceLocation.name}`);
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -119,6 +127,7 @@ export default function TransfersPage() {
       setReceiveTarget(null);
       setReceiveForm({ destinationBatchCode: "", quantity: "" });
       await load();
+      toast.push("Transfer receipt recorded");
     } catch (err) {
       setError(apiErrorMessage(err));
     }
@@ -128,22 +137,26 @@ export default function TransfersPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-semibold">Internal Transfers</h1>
-          <p className="text-sm text-gray-500">Destination stock increases only after receipt — partial receipt supported</p>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <ArrowLeftRight size={18} className="text-amber-600" />
+            Internal Transfers
+          </h1>
+          <p className="text-sm text-ink-muted">Destination stock increases only after receipt — partial receipt supported</p>
         </div>
         {canAct && (
           <button className="btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Cancel" : "+ Request Transfer"}
+            <Plus size={15} />
+            {showForm ? "Cancel" : "Request transfer"}
           </button>
         )}
       </div>
 
-      {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 text-sm text-danger-600 flag-row px-3 py-2 rounded">{error}</div>}
 
       {showForm && (
         <form onSubmit={handleCreate} className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
           <div>
-            <label className="text-xs font-medium text-gray-600">Item</label>
+            <label className="text-xs font-medium text-ink-muted">Item</label>
             <select
               className="input mt-1"
               required
@@ -159,7 +172,7 @@ export default function TransfersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Source</label>
+            <label className="text-xs font-medium text-ink-muted">Source</label>
             <select
               className="input mt-1"
               required
@@ -175,7 +188,7 @@ export default function TransfersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Source Batch</label>
+            <label className="text-xs font-medium text-ink-muted">Source batch</label>
             <select
               className="input mt-1"
               required
@@ -191,7 +204,7 @@ export default function TransfersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Destination</label>
+            <label className="text-xs font-medium text-ink-muted">Destination</label>
             <select
               className="input mt-1"
               required
@@ -209,7 +222,7 @@ export default function TransfersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Quantity</label>
+            <label className="text-xs font-medium text-ink-muted">Quantity</label>
             <input
               className="input mt-1"
               type="number"
@@ -227,7 +240,7 @@ export default function TransfersPage() {
 
       <div className="card overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-paper border-b border-paper-border dark:bg-steel-800 dark:border-steel-700">
             <tr>
               <th className="table-th">Item</th>
               <th className="table-th">Source</th>
@@ -238,42 +251,54 @@ export default function TransfersPage() {
               {canAct && <th className="table-th"></th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {transfers.map((t) => (
-              <tr key={t.id}>
-                <td className="table-td font-medium">{t.item.name}</td>
-                <td className="table-td">{t.sourceLocation.name}</td>
-                <td className="table-td">{t.destinationLocation.name}</td>
-                <td className="table-td">{t.quantity}</td>
-                <td className="table-td">{t.receivedQuantity}</td>
-                <td className="table-td">
-                  <span className={`badge ${statusColor[t.status]}`}>{t.status.replace("_", " ")}</span>
-                </td>
-                {canAct && (
-                  <td className="table-td space-x-2">
-                    {t.status === "REQUESTED" && (
-                      <button className="btn-secondary text-xs" onClick={() => handleDispatch(t)}>
-                        Dispatch
-                      </button>
-                    )}
-                    {(t.status === "DISPATCHED" || t.status === "PARTIALLY_RECEIVED") && (
-                      <button
-                        className="btn-secondary text-xs"
-                        onClick={() => {
-                          setReceiveTarget(t);
-                          setReceiveForm({ destinationBatchCode: `${t.item.name}-B1`, quantity: "" });
-                        }}
-                      >
-                        Receive
-                      </button>
-                    )}
+          <tbody className="divide-y divide-paper-border dark:divide-steel-700">
+            {loading &&
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={7} className="px-3 py-3">
+                    <div className="h-3.5 rounded bg-paper-border/60 dark:bg-steel-700 animate-pulse" />
                   </td>
-                )}
-              </tr>
-            ))}
-            {transfers.length === 0 && (
+                </tr>
+              ))}
+            {!loading &&
+              transfers.map((t) => {
+                const pending = t.status === "REQUESTED" || t.status === "DISPATCHED" || t.status === "PARTIALLY_RECEIVED";
+                return (
+                  <tr key={t.id} className={pending ? "flag-row" : undefined}>
+                    <td className="table-td font-medium">{t.item.name}</td>
+                    <td className="table-td">{t.sourceLocation.name}</td>
+                    <td className="table-td">{t.destinationLocation.name}</td>
+                    <td className="table-td table-mono">{t.quantity}</td>
+                    <td className="table-td table-mono">{t.receivedQuantity}</td>
+                    <td className="table-td">
+                      <span className={`badge ${statusColor[t.status]}`}>{t.status.replace("_", " ")}</span>
+                    </td>
+                    {canAct && (
+                      <td className="table-td space-x-2">
+                        {t.status === "REQUESTED" && (
+                          <button className="btn-secondary text-xs py-1" onClick={() => handleDispatch(t)}>
+                            Dispatch
+                          </button>
+                        )}
+                        {(t.status === "DISPATCHED" || t.status === "PARTIALLY_RECEIVED") && (
+                          <button
+                            className="btn-secondary text-xs py-1"
+                            onClick={() => {
+                              setReceiveTarget(t);
+                              setReceiveForm({ destinationBatchCode: `${t.item.name}-B1`, quantity: "" });
+                            }}
+                          >
+                            Receive
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            {!loading && transfers.length === 0 && (
               <tr>
-                <td className="table-td text-gray-400" colSpan={7}>
+                <td className="table-td text-ink-faint py-8 text-center" colSpan={7}>
                   No transfers yet.
                 </td>
               </tr>
@@ -283,14 +308,14 @@ export default function TransfersPage() {
       </div>
 
       {receiveTarget && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <form onSubmit={handleReceive} className="card p-5 w-80 space-y-3">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50">
+          <form onSubmit={handleReceive} className="card p-5 w-80 space-y-3 shadow-pop">
             <h2 className="font-semibold">Receive transfer</h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               {receiveTarget.item.name}: {receiveTarget.receivedQuantity}/{receiveTarget.quantity} received so far
             </p>
             <div>
-              <label className="text-xs font-medium text-gray-600">Destination batch code</label>
+              <label className="text-xs font-medium text-ink-muted">Destination batch code</label>
               <input
                 className="input mt-1"
                 required
@@ -299,7 +324,7 @@ export default function TransfersPage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600">
+              <label className="text-xs font-medium text-ink-muted">
                 Quantity (leave blank to receive all remaining)
               </label>
               <input
@@ -316,7 +341,7 @@ export default function TransfersPage() {
                 Cancel
               </button>
               <button type="submit" className="btn-primary">
-                Confirm Receipt
+                Confirm receipt
               </button>
             </div>
           </form>
