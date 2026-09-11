@@ -2,31 +2,102 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-paper text-ink font-sans transition-colors duration-200;
+  }
+  .dark body {
+    @apply bg-steel-950 text-steel-200;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+  ::selection {
+    @apply bg-amber-400/40;
+  }
+  /* Visible keyboard focus everywhere, no exceptions. */
+  :focus-visible {
+    outline: 2px solid #DC9A1C;
+    outline-offset: 2px;
+  }
 }
 
-.btn {
-  @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
-}
-.btn-primary {
-  @apply btn bg-brand-600 text-white hover:bg-brand-700;
-}
-.btn-secondary {
-  @apply btn bg-white border border-gray-300 text-gray-700 hover:bg-gray-50;
-}
-.input {
-  @apply block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500;
-}
-.card {
-  @apply bg-white rounded-lg border border-gray-200 shadow-sm;
-}
-.table-th {
-  @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500;
-}
-.table-td {
-  @apply px-3 py-2 text-sm text-gray-700;
-}
-.badge {
-  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded px-3.5 py-2 text-sm font-medium
+      transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-amber-500 text-steel-950 hover:bg-amber-400 shadow-panel;
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-paper-border text-ink hover:border-steel-400 hover:bg-paper;
+  }
+  .dark .btn-secondary {
+    @apply bg-steel-900 border-steel-700 text-steel-200 hover:border-steel-600 hover:bg-steel-800;
+  }
+  .btn-danger {
+    @apply btn bg-danger-500 text-white hover:bg-danger-600;
+  }
+  .btn-ghost {
+    @apply btn text-ink-muted hover:text-ink hover:bg-paper-border/50;
+  }
+  .dark .btn-ghost {
+    @apply text-steel-400 hover:text-steel-200 hover:bg-steel-800;
+  }
+
+  .input {
+    @apply block w-full rounded border border-paper-border bg-white px-3 py-2 text-sm text-ink
+      placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-amber-400/60 focus:border-amber-400;
+  }
+  .dark .input {
+    @apply bg-steel-900 border-steel-700 text-steel-200;
+  }
+
+  .card {
+    @apply bg-paper-panel rounded-md border border-paper-border shadow-panel;
+  }
+  .dark .card {
+    @apply bg-steel-900 border-steel-700;
+  }
+
+  .table-th {
+    @apply px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-faint;
+  }
+  .table-td {
+    @apply px-3 py-2.5 text-sm text-ink align-middle;
+  }
+  .dark .table-td {
+    @apply text-steel-200;
+  }
+  .table-mono {
+    @apply font-mono text-sm tabular-nums;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+
+  /* Signature device: amber left-edge marker for anything needing attention
+     (shortage, low stock, pending receipt). Used deliberately, not everywhere. */
+  .flag-row {
+    @apply border-l-2 border-amber-500 bg-amber-50/40;
+  }
+  .dark .flag-row {
+    @apply bg-amber-500/10;
+  }
+
+  .stat-num {
+    @apply font-display font-semibold tabular-nums;
+  }
+
+  .panel-heading {
+    @apply text-sm font-semibold text-ink;
+  }
+  .dark .panel-heading {
+    @apply text-steel-100;
+  }
 }
