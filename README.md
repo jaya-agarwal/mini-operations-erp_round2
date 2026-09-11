@@ -1,4 +1,4 @@
-# Mini Operations ERP
+# Freighthold — Mini Operations ERP
 
 A full-stack Operations ERP covering:
 **Inventory → Work Order → Stock Check → Internal Transfer / Shortage → Customer Reservation**
@@ -29,6 +29,21 @@ row-level locking and an append-only audit ledger with unique constraints,
 not application-level `if` checks. See [Design Decisions](#design-decisions)
 below for exactly how and why, including a standalone proof script.
 
+On top of that, the frontend goes beyond the four required screens:
+
+- **A real Dashboard** (`GET /api/dashboard/stats`) with live KPIs, a stock-by-category
+  chart, a low-stock alert list, and a **live activity ledger** — rendered directly from
+  the existing append-only `InventoryTransaction` table, so it's a genuine window into
+  the same audit trail that makes the concurrency guarantees possible, not a bolted-on
+  widget with fake data.
+- **A distinct visual identity** ("Freighthold" — an industrial operations-console
+  aesthetic: steel side panel, hazard-amber accent reserved for anything that needs
+  attention, monospace for IDs/quantities) instead of a generic admin-template look,
+  with a working light/dark toggle.
+- **Toast feedback, search/filter, low-stock and shortage row highlighting, and loading
+  skeletons** across all screens, so the app reads as a real operations tool rather than
+  a CRUD scaffold.
+
 ---
 
 ## Tech Stack
@@ -36,7 +51,7 @@ below for exactly how and why, including a standalone proof script.
 - **Backend:** Node.js, TypeScript, Express, Prisma ORM
 - **Database:** PostgreSQL (built for [Neon](https://neon.tech) serverless Postgres)
 - **Auth:** JWT (bcrypt password hashing), role-based authorization enforced server-side
-- **Frontend:** React + Vite + TypeScript + Tailwind CSS
+- **Frontend:** React + Vite + TypeScript + Tailwind CSS, Recharts, lucide-react
 - **Validation:** Zod (request schemas)
 - **API Docs:** Swagger / OpenAPI (`swagger-jsdoc` + `swagger-ui-express`)
 - **Testing:** Jest + Supertest
@@ -52,7 +67,7 @@ mini-erp/
 │   │   ├── schema.prisma       # data model (see docs/ER-diagram.md)
 │   │   └── seed.ts             # creates 1 user per role + sample stock
 │   ├── src/
-│   │   ├── modules/            # auth, inventory, workorders, transfers, orders, locations
+│   │   ├── modules/            # auth, inventory, workorders, transfers, orders, locations, dashboard
 │   │   ├── middleware/         # auth.ts (JWT + role + location-scope guards), errorHandler.ts
 │   │   ├── lib/                # prisma client singleton, error classes
 │   │   ├── docs/swagger.ts
@@ -61,7 +76,7 @@ mini-erp/
 │   ├── tests/                  # Jest + Supertest — the 5 mandatory tests + bonus coverage
 │   └── scripts/concurrency-proof.js  # standalone proof of the locking strategy, see below
 ├── frontend/
-│   └── src/pages/               # Login, Inventory, WorkOrders, Transfers, Orders
+│   └── src/pages/               # Login, Dashboard, Inventory, WorkOrders, Transfers, Orders
 ├── docs/ER-diagram.md
 └── docker-compose.yml           # local Postgres + backend, one command
 ```
