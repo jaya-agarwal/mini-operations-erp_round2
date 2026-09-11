@@ -1,0 +1,226 @@
+// Mini Operations ERP — Database Schema
+// Design notes (see README "Design Decisions" for full rationale):
+// - InventoryBatch.availableQuantity is NOT stored; it's always derived
+//   (physical - reserved - damaged) at the query layer, so it can never drift.
+// - Every mutation to inventory numbers is written through inventoryTransaction
+//   (append-only ledger) — this gives us auditability and doubles as the
+//   duplicate-transaction guard (Requirement: "prevent duplicate inventory transaction").
+// - User.assignedLocationId is nullable and unused by default. It exists so that
+//   "Live Verification Change 4: restrict users to only their assigned location"
+//   can be turned on via a single middleware flag instead of a schema migration
+//   during the live round.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATIONS
+  SALES
+}
+
+enum WorkOrderStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TransferStatus {
+  REQUESTED
+  DISPATCHED
+  PARTIALLY_RECEIVED
+  RECEIVED
+}
+
+enum OrderStatus {
+  RESERVED
+  FULFILLED
+  CANCELLED
+}
+
+// Append-only audit ledger. Every physical/reserved/damaged quantity change
+// is recorded here with a reference back to the action that caused it.
+// This is what actually prevents duplicate transactions and gives us a
+// real audit trail instead of just trusting the mutable inventory row.
+enum InventoryTxType {
+  RECEIPT // stock added (e.g. initial load)
+  RESERVE // sales reservation
+  RELEASE_RESERVATION // order cancelled, reservation released
+  TRANSFER_DISPATCH // stock left this location
+  TRANSFER_RECEIPT // stock arrived at this location
+  DAMAGE // stock marked damaged (reduces available, not physical)
+  ADJUSTMENT // manual correction
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String
+  name               String
+  role               Role
+  // Nullable on purpose — see file header. Populated only if/when location
+  // restriction is turned on.
+  assignedLocationId String?
+  assignedLocation   Location? @relation(fields: [assignedLocationId], references: [id])
+  createdAt          DateTime  @default(now())
+
+  workOrdersAssigned WorkOrder[]     @relation("AssignedUser")
+  customerOrders     CustomerOrder[] @relation("CreatedByUser")
+
+  @@map("users")
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  users              User[]
+  batches            InventoryBatch[]
+  workOrders         WorkOrder[]
+  transfersOut       Transfer[]       @relation("SourceLocation")
+  transfersIn        Transfer[]       @relation("DestinationLocation")
+
+  @@map("locations")
+}
+
+model Category {
+  id    String @id @default(uuid())
+  name  String @unique
+  items Item[]
+
+  @@map("categories")
+}
+
+model Item {
+  id         String   @id @default(uuid())
+  name       String
+  sku        String   @unique
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime @default(now())
+
+  batches        InventoryBatch[]
+  workOrders     WorkOrder[]
+  transfers      Transfer[]
+  customerOrders CustomerOrder[]
+
+  @@map("items")
+}
+
+// One row per (item, location, batch). physicalQuantity and reservedQuantity
+// are the only two numbers we persist; availableQuantity and damagedQuantity
+// derived views are computed in application code from the ledger + these
+// fields so they can never go out of sync.
+model InventoryBatch {
+  id                String   @id @default(uuid())
+  itemId            String
+  item              Item     @relation(fields: [itemId], references: [id])
+  locationId        String
+  location          Location @relation(fields: [locationId], references: [id])
+  batchCode         String
+  physicalQuantity  Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  damagedQuantity   Int      @default(0)
+  // Optimistic-concurrency backstop. The primary safety mechanism is the
+  // row-level SELECT ... FOR UPDATE lock taken inside every mutating
+  // transaction (see inventoryService.ts), but this version column is kept
+  // as a defence-in-depth check and makes concurrent-write bugs loud in tests
+  // instead of silent.
+  version           Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  transactions InventoryTransaction[]
+
+  @@unique([itemId, locationId, batchCode])
+  @@index([itemId, locationId])
+  @@map("inventory_batches")
+}
+
+model InventoryTransaction {
+  id          String          @id @default(uuid())
+  batchId     String
+  batch       InventoryBatch  @relation(fields: [batchId], references: [id])
+  type        InventoryTxType
+  quantity    Int // always positive; direction implied by `type`
+  // referenceType + referenceId point back at the WorkOrder / Transfer /
+  // CustomerOrder that caused this ledger entry. Combined with a unique
+  // constraint below, this is what makes "receive the same transfer twice"
+  // or "reserve the same order twice" structurally impossible, not just
+  // application-checked.
+  referenceType String
+  referenceId   String
+  createdAt     DateTime @default(now())
+  createdById   String?
+
+  // A given (referenceId, type) can only ever post once. E.g. a single
+  // Transfer id can only ever have ONE TRANSFER_DISPATCH row against it.
+  // (Partial receipts are handled as distinct referenceType
+  // "TRANSFER_RECEIPT_PARTIAL_<n>", see transferService.ts.)
+  @@unique([referenceId, type, referenceType])
+  @@index([batchId])
+  @@map("inventory_transactions")
+}
+
+model WorkOrder {
+  id               String          @id @default(uuid())
+  locationId       String
+  location         Location        @relation(fields: [locationId], references: [id])
+  itemId           String
+  item             Item            @relation(fields: [itemId], references: [id])
+  requiredQuantity Int
+  assignedUserId   String
+  assignedUser     User            @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  status           WorkOrderStatus @default(ASSIGNED)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@map("work_orders")
+}
+
+model Transfer {
+  id                   String         @id @default(uuid())
+  sourceLocationId     String
+  sourceLocation       Location       @relation("SourceLocation", fields: [sourceLocationId], references: [id])
+  destinationLocationId String
+  destinationLocation  Location       @relation("DestinationLocation", fields: [destinationLocationId], references: [id])
+  itemId               String
+  item                 Item           @relation(fields: [itemId], references: [id])
+  quantity             Int
+  // Live Verification "Change 2": partial receipt support, built in from day one.
+  receivedQuantity     Int            @default(0)
+  status               TransferStatus @default(REQUESTED)
+  dispatchedAt         DateTime?
+  receivedAt           DateTime?
+  createdAt            DateTime       @default(now())
+
+  @@map("transfers")
+}
+
+model CustomerOrder {
+  id             String      @id @default(uuid())
+  customerName   String
+  itemId         String
+  item           Item        @relation(fields: [itemId], references: [id])
+  locationId     String
+  // The exact batch the reservation was taken against — stored so that
+  // cancellation (Live Verification Change 3) always releases the
+  // reservation back to the correct batch without the client having to
+  // remember or re-supply it.
+  batchId        String
+  quantity       Int
+  status         OrderStatus @default(RESERVED)
+  createdById    String
+  createdBy      User        @relation("CreatedByUser", fields: [createdById], references: [id])
+  createdAt      DateTime    @default(now())
+  cancelledAt    DateTime?
+
+  @@map("customer_orders")
+}
