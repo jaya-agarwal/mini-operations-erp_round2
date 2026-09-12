@@ -308,6 +308,7 @@ five mandatory tests plus bonus coverage are written and ready to execute in
 ## Live Demo
 - Frontend: https://mini-operations-erp-round2.vercel.app
 - Backend API docs: https://mini-operations-erp-round2.onrender.com/api/docs
+- Video Documentation: https://drive.google.com/file/d/1AUJkH89MfPbm_z4yS6icjQhvx1Fb1YYh/view?usp=sharing
 - Full Documentation: https://drive.google.com/file/d/1ELRd6xZRyORRMaX0XtssRRTv1OeNHy3E/view?usp=sharing
    
 Note: the backend is on Render's free tier and may take 30–60s to wake up
