@@ -72,7 +72,7 @@ export async function createCustomerOrder(input: {
     // if anything ever mutates this batch outside withLockedBatch, Postgres
     // will abort one of the conflicting transactions rather than silently
     // allow a lost update.
-    { isolation: "Serializable" }
+    { isolationLevel: "Serializable" }
   );
 }
 
